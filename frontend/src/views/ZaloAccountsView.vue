@@ -8,12 +8,24 @@
 
     <v-card>
       <v-data-table :headers="headers" :items="accounts" :loading="loading" no-data-text="Chưa có tài khoản Zalo nào">
+        <template #item.isManager="{ item }">
+          <v-chip v-if="item.isManager" color="amber" size="small" variant="flat" prepend-icon="mdi-star">Zalo quản lí</v-chip>
+        </template>
         <template #item.status="{ item }">
           <v-chip :color="statusColor(item.liveStatus || item.status)" size="small" variant="flat">
             {{ statusText(item.liveStatus || item.status) }}
           </v-chip>
         </template>
         <template #item.actions="{ item }">
+          <v-btn
+            v-if="authStore.isAdmin"
+            icon size="small" :color="item.isManager ? 'amber' : undefined" variant="text"
+            :title="item.isManager ? 'Bỏ chọn Zalo quản lí' : 'Chọn làm Zalo quản lí (nhận ca khó)'"
+            :loading="settingManager === item.id"
+            @click="toggleManager(item)"
+          >
+            <v-icon>{{ item.isManager ? 'mdi-star' : 'mdi-star-outline' }}</v-icon>
+          </v-btn>
           <v-btn v-if="authStore.isAdmin" icon size="small" color="cyan" title="Phân quyền truy cập" @click="openAccess(item)">
             <v-icon>mdi-shield-account</v-icon>
           </v-btn>
@@ -114,6 +126,19 @@ const {
 const authStore = useAuthStore();
 
 const showAddDialog = ref(false);
+const settingManager = ref<string | null>(null);
+
+async function toggleManager(account: ZaloAccount) {
+  settingManager.value = account.id;
+  try {
+    await api.post(`/zalo-accounts/${account.id}/manager`, { isManager: !account.isManager });
+    await fetchAccounts();
+  } catch (err: any) {
+    alert(err?.response?.data?.error || 'Không cập nhật được Zalo quản lí');
+  } finally {
+    settingManager.value = null;
+  }
+}
 const syncing = ref<string | null>(null);
 const showDeleteDialog = ref(false);
 const showAccessDialog = ref(false);
@@ -125,6 +150,7 @@ const headers = [
   { title: 'Tên', key: 'displayName', sortable: true },
   { title: 'Zalo UID', key: 'zaloUid' },
   { title: 'SĐT', key: 'phone' },
+  { title: 'Vai trò', key: 'isManager', sortable: false },
   { title: 'Trạng thái', key: 'status', sortable: true },
   { title: 'Hành động', key: 'actions', sortable: false, align: 'end' as const },
 ];

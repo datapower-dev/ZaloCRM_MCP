@@ -40,6 +40,12 @@ import { startZaloHealthCheck } from './modules/zalo/zalo-health-check.js';
 import { publicApiRoutes } from './modules/api/public-api-routes.js';
 import { webhookSettingsRoutes } from './modules/api/webhook-settings-routes.js';
 import { orderRoutes } from './modules/orders/order-routes.js';
+import { channelRoutes } from './modules/channels/channel-routes.js';
+import { escalationRoutes } from './modules/escalations/escalation-routes.js';
+import { setEscalationIO } from './modules/escalations/escalation-service.js';
+import { configRoutes } from './modules/settings/config-routes.js';
+import { mcpEndpointRoutes, claudeCodeRoutes } from './modules/mcp/mcp-routes.js';
+import { startTelegramService } from './modules/telegram/telegram-bot.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -108,6 +114,7 @@ async function bootstrap() {
 
   // Pass io to zalo pool for real-time event emission
   zaloPool.setIO(io);
+  setEscalationIO(io);
 
   // JWT-authenticated sockets, auto-joined to their org room
   registerZaloSocketHandlers(io, app);
@@ -136,6 +143,11 @@ async function bootstrap() {
   }
   await app.register(webhookSettingsRoutes);
   await app.register(orderRoutes);
+  await app.register(channelRoutes);
+  await app.register(escalationRoutes);
+  await app.register(configRoutes);
+  await app.register(claudeCodeRoutes);
+  await app.register(mcpEndpointRoutes);
 
   // Liveness/readiness probe — also checks DB connectivity
   app.get('/health', async () => {
@@ -182,6 +194,7 @@ async function bootstrap() {
     logger.info(`Environment: ${config.nodeEnv}; allowed origins: ${config.allowedOrigins.join(', ')}`);
     startAppointmentReminder(io);
     startZaloHealthCheck();
+    startTelegramService().catch((err) => logger.error('Telegram service failed to start:', err));
   } catch (err) {
     logger.error('Failed to start server:', err);
     process.exit(1);

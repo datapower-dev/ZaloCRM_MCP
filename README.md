@@ -33,6 +33,10 @@ Hệ thống quản lý tập trung nhiều tài khoản Zalo cá nhân trên 1 
 Bản này đã được rà soát và nâng cấp bảo mật — xem [SECURITY-HARDENING.md](SECURITY-HARDENING.md)
 (xác thực Socket.IO, mã hoá phiên Zalo, bắt buộc secret, chống SSRF, phân quyền webhook/API key...).
 
+## Tính năng mở rộng
+
+Kênh Tư Vấn, Ca khó (chuyển tới Zalo quản lí + Telegram), Claude Code qua MCP, Telegram bot, phân quyền chi tiết và thời gian phản hồi — xem [FEATURES-CLAUDE-TELEGRAM.md](FEATURES-CLAUDE-TELEGRAM.md).
+
 ## Cài đặt nhanh
 
 > Hướng dẫn chi tiết: [HUONG-DAN-CAI-DAT.md](HUONG-DAN-CAI-DAT.md)

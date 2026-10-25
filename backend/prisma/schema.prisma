@@ -23,6 +23,10 @@ model Organization {
   dailyStats    DailyMessageStat[]
   settings      AppSetting[]
   orders        Order[]
+  escalations   Escalation[]
+  mcpTokens     McpToken[]
+  mcpCallLogs   McpCallLog[]
+  telegramChats TelegramChat[]
 
   @@map("organizations")
 }
@@ -62,6 +66,10 @@ model User {
   repliedMessages  Message[]           @relation("RepliedMessages")
   activityLogs     ActivityLog[]
   createdOrders    Order[]             @relation("CreatedOrders")
+  supportedConversations Conversation[] @relation("SupportedConversations")
+  createdEscalations     Escalation[]   @relation("CreatedEscalations")
+  resolvedEscalations    Escalation[]   @relation("ResolvedEscalations")
+  mcpTokens              McpToken[]
 
   @@map("users")
 }
@@ -77,6 +85,8 @@ model ZaloAccount {
   phone           String?
   status          String    @default("disconnected") // connected, disconnected, qr_pending
   sessionData     Json?     @map("session_data")
+  // The org's "Zalo quản lí": receives escalations (ca khó)
+  isManager       Boolean   @default(false) @map("is_manager")
   lastConnectedAt DateTime? @map("last_connected_at")
   createdAt       DateTime  @default(now()) @map("created_at")
 
@@ -145,13 +155,19 @@ model Conversation {
   lastMessageAt    DateTime? @map("last_message_at")
   unreadCount      Int       @default(0) @map("unread_count")
   isReplied        Boolean   @default(true) @map("is_replied")
+  // Kênh tư vấn controls
+  listening        Boolean   @default(true) // store + notify incoming messages
+  aiAssist         Boolean   @default(false) @map("ai_assist") // visible to MCP / Claude Code
+  supporterUserId  String?   @map("supporter_user_id")
   createdAt        DateTime  @default(now()) @map("created_at")
 
   org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
   zaloAccount ZaloAccount  @relation(fields: [zaloAccountId], references: [id], onDelete: Cascade)
   contact     Contact?     @relation(fields: [contactId], references: [id])
+  supporter   User?        @relation("SupportedConversations", fields: [supporterUserId], references: [id], onDelete: SetNull)
   messages    Message[]
   orders      Order[]
+  escalations Escalation[]
 
   @@unique([zaloAccountId, externalThreadId])
   @@map("conversations")
@@ -274,4 +290,92 @@ model Order {
   conversation Conversation? @relation(fields: [conversationId], references: [id])
 
   @@map("orders")
+}
+
+// "Ca khó": a request needing a manager / approval, forwarded to Zalo quản lí + Telegram
+model Escalation {
+  id               String    @id @default(uuid())
+  orgId            String    @map("org_id")
+  conversationId   String?   @map("conversation_id")
+  createdByUserId  String?   @map("created_by_user_id")
+  title            String
+  detail           String?
+  category         String    @default("complex") // complex, approval
+  priority         String    @default("normal") // normal, high, urgent
+  status           String    @default("open") // open, approved, rejected, resolved
+  resolution       String?
+  resolvedByUserId String?   @map("resolved_by_user_id")
+  resolvedByName   String?   @map("resolved_by_name")
+  resolvedVia      String?   @map("resolved_via") // web, telegram, mcp
+  resolvedAt       DateTime? @map("resolved_at")
+  source           String    @default("web") // web, mcp
+  zaloDelivery     String?   @map("zalo_delivery")
+  telegramDelivery String?   @map("telegram_delivery")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  org          Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  createdBy    User?         @relation("CreatedEscalations", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  resolvedBy   User?         @relation("ResolvedEscalations", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([orgId, status, createdAt])
+  @@map("escalations")
+}
+
+// Personal access token for the MCP endpoint (Claude Code). Only the SHA-256 hash is stored.
+model McpToken {
+  id         String    @id @default(uuid())
+  orgId      String    @map("org_id")
+  userId     String    @map("user_id")
+  name       String
+  tokenHash  String    @unique @map("token_hash")
+  hint       String
+  scopes     Json      @default("[\"read\"]") // read, write, send
+  expiresAt  DateTime? @map("expires_at")
+  lastUsedAt DateTime? @map("last_used_at")
+  revokedAt  DateTime? @map("revoked_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user  User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  calls McpCallLog[]
+
+  @@index([orgId, userId])
+  @@map("mcp_tokens")
+}
+
+// Audit log of MCP tool calls
+model McpCallLog {
+  id         String   @id @default(uuid())
+  orgId      String   @map("org_id")
+  tokenId    String?  @map("token_id")
+  userId     String?  @map("user_id")
+  tool       String
+  ok         Boolean  @default(true)
+  error      String?
+  durationMs Int      @default(0) @map("duration_ms")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  token McpToken?    @relation(fields: [tokenId], references: [id], onDelete: SetNull)
+
+  @@index([orgId, createdAt])
+  @@map("mcp_call_logs")
+}
+
+// Telegram chats linked to the org's bot (only these may use bot commands)
+model TelegramChat {
+  id             String   @id @default(uuid())
+  orgId          String   @map("org_id")
+  chatId         String   @map("chat_id")
+  title          String?
+  linkedByUserId String?  @map("linked_by_user_id")
+  canAct         Boolean  @default(true) @map("can_act") // may approve/resolve ca khó
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, chatId])
+  @@map("telegram_chats")
 }

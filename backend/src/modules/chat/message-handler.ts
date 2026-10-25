@@ -6,6 +6,7 @@ import { prisma } from '../../shared/database/prisma-client.js';
 import { logger } from '../../shared/utils/logger.js';
 import { randomUUID } from 'node:crypto';
 import { emitWebhook } from '../api/webhook-service.js';
+import { getOrgConfig } from '../settings/org-config.js';
 
 export interface IncomingMessage {
   accountId: string;
@@ -54,9 +55,19 @@ export async function handleIncomingMessage(
     });
     if (!account) return null;
 
+    // Kênh Tư Vấn: a muted channel ("Nghe tin nhắn" off) is ignored entirely —
+    // nothing stored, no notification, no webhook.
+    const known = await prisma.conversation.findFirst({
+      where: { zaloAccountId: msg.accountId, externalThreadId: msg.threadId },
+      select: { listening: true },
+    });
+    if (known && !known.listening) return null;
+
     const contactId = await upsertContact(msg, account.orgId);
 
     const conversation = await findOrCreateConversation(msg, account.orgId, contactId);
+    // New channel created muted (defaults off) → keep the channel row but drop the message
+    if (!conversation.listening) return null;
 
     const sentAt = new Date(msg.timestamp);
     const message = await prisma.message.create({
@@ -178,10 +189,14 @@ async function findOrCreateConversation(
 
   const existing = await prisma.conversation.findFirst({
     where: { zaloAccountId: msg.accountId, externalThreadId },
-    select: { id: true },
+    select: { id: true, listening: true },
   });
 
   if (existing) return existing;
+
+  // New channel: defaults from Cấu hình → Kênh
+  const cfg = await getOrgConfig(orgId);
+  const listening = msg.threadType === 'group' ? cfg.channels.listenNewGroups : cfg.channels.listenNewP2P;
 
   return prisma.conversation.create({
     data: {
@@ -194,8 +209,10 @@ async function findOrCreateConversation(
       lastMessageAt: new Date(msg.timestamp),
       unreadCount: msg.isSelf ? 0 : 1,
       isReplied: msg.isSelf,
+      listening,
+      aiAssist: cfg.channels.aiAssistNew,
     },
-    select: { id: true },
+    select: { id: true, listening: true },
   });
 }
 

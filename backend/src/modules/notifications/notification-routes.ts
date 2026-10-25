@@ -6,6 +6,7 @@ import type { FastifyInstance } from 'fastify';
 import { prisma } from '../../shared/database/prisma-client.js';
 import { authMiddleware } from '../auth/auth-middleware.js';
 import { zaloPool } from '../zalo/zalo-pool.js';
+import { getOrgConfig } from '../settings/org-config.js';
 
 interface NotificationItem {
   id: string;
@@ -23,10 +24,11 @@ export async function notificationRoutes(app: FastifyInstance) {
     const user = request.user!;
     const notifications: NotificationItem[] = [];
 
-    // 1. Unreplied conversations > 30 min
-    const thirtyMinAgo = new Date(Date.now() - 30 * 60000);
+    // 1. Unreplied conversations past the configured SLA (Cấu hình → Thời gian phản hồi)
+    const cfg = await getOrgConfig(user.orgId);
+    const warnBefore = new Date(Date.now() - cfg.sla.warnMinutes * 60000);
     const unreplied = await prisma.conversation.count({
-      where: { orgId: user.orgId, isReplied: false, lastMessageAt: { lt: thirtyMinAgo } },
+      where: { orgId: user.orgId, isReplied: false, listening: true, lastMessageAt: { lt: warnBefore } },
     });
     if (unreplied > 0) {
       notifications.push({
@@ -34,7 +36,20 @@ export async function notificationRoutes(app: FastifyInstance) {
         type: 'warning',
         priority: 'high',
         title: `${unreplied} cuộc trò chuyện chưa trả lời`,
-        detail: 'Có tin nhắn chưa phản hồi quá 30 phút',
+        detail: `Có tin nhắn chưa phản hồi quá ${cfg.sla.warnMinutes} phút`,
+        createdAt: new Date().toISOString(),
+      });
+    }
+
+    // 1b. Open ca khó
+    const openEsc = await prisma.escalation.count({ where: { orgId: user.orgId, status: 'open' } });
+    if (openEsc > 0) {
+      notifications.push({
+        id: 'escalations',
+        type: 'warning',
+        priority: 'high',
+        title: `${openEsc} ca khó đang chờ xử lý`,
+        detail: 'Xem tại menu Ca khó',
         createdAt: new Date().toISOString(),
       });
     }

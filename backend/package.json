@@ -14,7 +14,9 @@
     "db:studio": "prisma studio",
     "test:security": "tsx test/security-units.ts",
     "typecheck": "tsc --noEmit",
-    "dev:local": "node --env-file=.env --import tsx src/app.ts"
+    "dev:local": "node --env-file=.env --import tsx src/app.ts",
+    "test:e2e": "node --env-file=.env --import tsx test/e2e-local.mjs",
+    "test:features": "node --env-file=.env --import tsx test/e2e-features.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -30,6 +32,7 @@
     "@fastify/multipart": "^9.4.0",
     "@fastify/rate-limit": "^10.3.0",
     "@fastify/static": "^9.0.0",
+    "@modelcontextprotocol/sdk": "1.32.1",
     "@prisma/adapter-pg": "^7.5.0",
     "@prisma/client": "^7.5.0",
     "@types/pg": "^8.20.0",
@@ -41,7 +44,8 @@
     "pg": "^8.20.0",
     "socket.io": "^4.8.3",
     "uuid": "^13.0.0",
-    "zca-js": "^2.1.2"
+    "zca-js": "^2.1.2",
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

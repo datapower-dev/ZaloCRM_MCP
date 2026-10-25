@@ -69,6 +69,30 @@ const routes = [
     meta: { requiresAuth: true, requiresAdmin: true },
   },
   {
+    path: '/channels',
+    name: 'Channels',
+    component: () => import('@/views/ChannelsView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/escalations',
+    name: 'Escalations',
+    component: () => import('@/views/EscalationsView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/claude-code',
+    name: 'ClaudeCode',
+    component: () => import('@/views/ClaudeCodeView.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/config',
+    name: 'Config',
+    component: () => import('@/views/ConfigView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true },
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
     component: () => import('@/views/NotFoundView.vue'),

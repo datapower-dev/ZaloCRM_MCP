@@ -15,6 +15,7 @@ export interface ZaloAccount {
   liveStatus?: string;
   phone: string | null;
   hasSession: boolean;
+  isManager: boolean;
   ownerUserId: string;
   createdAt: string;
 }

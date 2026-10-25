@@ -82,15 +82,17 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, computed } from 'vue';
 import { useTheme } from 'vuetify';
 import { useAuthStore } from '@/stores/auth';
 import { useRouter } from 'vue-router';
 import NotificationBell from '@/components/NotificationBell.vue';
 import GlobalSearch from '@/components/GlobalSearch.vue';
+import { usePermissionStore, type PermissionKey } from '@/stores/permissions';
 
 const theme = useTheme();
 const authStore = useAuthStore();
+const permStore = usePermissionStore();
 const router = useRouter();
 
 const drawer = ref(true);
@@ -99,19 +101,28 @@ const isDark = ref(localStorage.getItem('theme') !== 'light');
 
 onMounted(() => {
   theme.global.name.value = isDark.value ? 'dark' : 'light';
+  if (!permStore.loaded) permStore.load();
 });
 
-const menuItems = [
+interface MenuItem { title: string; icon: string; path: string; perm?: PermissionKey; admin?: boolean }
+const allMenuItems: MenuItem[] = [
   { title: 'Dashboard', icon: 'mdi-view-dashboard-outline', path: '/' },
   { title: 'Tin nhắn', icon: 'mdi-message-text-outline', path: '/chat' },
+  { title: 'Kênh Tư Vấn', icon: 'mdi-forum-outline', path: '/channels', perm: 'channels.view' },
+  { title: 'Ca khó', icon: 'mdi-alert-decagram-outline', path: '/escalations' },
   { title: 'Khách hàng', icon: 'mdi-account-group-outline', path: '/contacts' },
   { title: 'Tài khoản Zalo', icon: 'mdi-cellphone-link', path: '/zalo-accounts' },
   { title: 'Lịch hẹn', icon: 'mdi-calendar-clock-outline', path: '/appointments' },
   { title: 'Đơn hàng', icon: 'mdi-cart-outline', path: '/orders' },
   { title: 'Báo cáo', icon: 'mdi-chart-arc', path: '/reports' },
+  { title: 'Claude Code', icon: 'mdi-robot-outline', path: '/claude-code' },
   { title: 'Nhân viên', icon: 'mdi-account-cog-outline', path: '/settings' },
-  { title: 'API & Webhook', icon: 'mdi-api', path: '/api-settings' },
+  { title: 'Cấu hình', icon: 'mdi-tune-variant', path: '/config', admin: true },
+  { title: 'API & Webhook', icon: 'mdi-api', path: '/api-settings', admin: true },
 ];
+const menuItems = computed(() =>
+  allMenuItems.filter((m) => (!m.perm || permStore.can(m.perm)) && (!m.admin || authStore.isAdmin)),
+);
 
 function toggleTheme() {
   isDark.value = !isDark.value;
@@ -120,6 +131,7 @@ function toggleTheme() {
 }
 
 function logout() {
+  permStore.reset();
   authStore.logout();
   router.push('/login');
 }

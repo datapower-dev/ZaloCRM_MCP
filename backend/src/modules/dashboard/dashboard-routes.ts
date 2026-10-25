@@ -6,6 +6,7 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { prisma } from '../../shared/database/prisma-client.js';
 import { authMiddleware } from '../auth/auth-middleware.js';
 import { logger } from '../../shared/utils/logger.js';
+import { getOrgOverview } from './overview-service.js';
 
 type QueryParams = Record<string, string>;
 
@@ -54,7 +55,11 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
           prisma.contact.count({ where: { orgId } }),
         ]);
 
+      const overview = await getOrgOverview(orgId);
       return {
+        overdueConversations: overview.overdue,
+        openEscalations: overview.openEscalations,
+        slaOverdueMinutes: overview.sla.overdueMinutes,
         messagesToday,
         messagesUnreplied: unreplied,
         messagesUnread: unread,

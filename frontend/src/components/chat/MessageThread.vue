@@ -21,6 +21,12 @@
           <div class="text-caption text-grey">{{ conversation.zaloAccount?.displayName || 'Zalo' }}</div>
         </div>
         <v-btn
+          v-if="permStore.can('escalations.create')"
+          size="small" variant="tonal" color="warning" prepend-icon="mdi-alert-decagram"
+          class="mr-2" title="Chuyển yêu cầu phức tạp / cần phê duyệt tới Zalo quản lí và Telegram"
+          @click="showEscalation = true"
+        >Ca khó</v-btn>
+        <v-btn
           :icon="showContactPanel ? 'mdi-account-details' : 'mdi-account-details-outline'"
           size="small" variant="text"
           :color="showContactPanel ? 'primary' : undefined"
@@ -102,6 +108,13 @@
       </div>
     </v-dialog>
 
+    <EscalationDialog
+      v-if="conversation"
+      v-model="showEscalation"
+      :conversation-id="conversation.id"
+      @created="(m: string) => { syncSnack = { show: true, text: m, color: 'success' }; }"
+    />
+
     <!-- Sync snackbar -->
     <v-snackbar v-model="syncSnack.show" :color="syncSnack.color" timeout="3000">{{ syncSnack.text }}</v-snackbar>
   </div>
@@ -111,6 +124,11 @@
 import { ref, watch, nextTick, computed } from 'vue';
 import type { Conversation, Message } from '@/composables/use-chat';
 import { api } from '@/api/index';
+import EscalationDialog from '@/components/chat/EscalationDialog.vue';
+import { usePermissionStore } from '@/stores/permissions';
+
+const permStore = usePermissionStore();
+const showEscalation = ref(false);
 
 const props = defineProps<{
   conversation: Conversation | null;

@@ -43,6 +43,7 @@ export async function zaloRoutes(app: FastifyInstance): Promise<void> {
         lastConnectedAt: true,
         createdAt: true,
         ownerUserId: true,
+        isManager: true,
         sessionData: true,
         owner: { select: { id: true, fullName: true, email: true } },
       },
@@ -154,6 +155,27 @@ export async function zaloRoutes(app: FastifyInstance): Promise<void> {
       logger.info(`Zalo account deleted ${id} by ${user.email}`);
 
       return reply.status(204).send();
+    },
+  );
+
+  // POST /api/v1/zalo-accounts/:id/manager — { isManager: boolean }
+  // Marks the org's "Zalo quản lí" (receives ca khó). Only one per org.
+  app.post<{ Params: { id: string }; Body: { isManager?: unknown } }>(
+    '/api/v1/zalo-accounts/:id/manager',
+    { preHandler: requireRole('owner', 'admin') },
+    async (request, reply) => {
+      const user = request.user!;
+      const { id } = request.params;
+      const isManager = request.body?.isManager;
+      if (typeof isManager !== 'boolean') return reply.status(400).send({ error: 'isManager phải là true/false' });
+      const account = await prisma.zaloAccount.findFirst({ where: { id, orgId: user.orgId }, select: { id: true, displayName: true } });
+      if (!account) return reply.status(404).send({ error: 'Account not found' });
+      await prisma.$transaction([
+        ...(isManager ? [prisma.zaloAccount.updateMany({ where: { orgId: user.orgId, isManager: true }, data: { isManager: false } })] : []),
+        prisma.zaloAccount.update({ where: { id }, data: { isManager } }),
+      ]);
+      logger.info(`Zalo manager account ${isManager ? 'set to' : 'unset from'} ${id} by ${user.email}`);
+      return { id, isManager };
     },
   );
 

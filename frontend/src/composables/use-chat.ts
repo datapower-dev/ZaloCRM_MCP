@@ -76,6 +76,9 @@ export function useChat() {
       const conv = conversations.value.find(c => c.id === convId);
       if (conv && convDetail.data.contact) {
         conv.contact = convDetail.data.contact;
+      } else if (!conv) {
+        // Deep-linked conversation outside the loaded page — add it so the thread can render
+        conversations.value.unshift(convDetail.data);
       }
     } catch {
       // Non-critical — panel will show partial data from list

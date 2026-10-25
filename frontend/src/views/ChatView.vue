@@ -41,6 +41,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import ConversationList from '@/components/chat/ConversationList.vue';
 import MessageThread from '@/components/chat/MessageThread.vue';
 import ChatContactPanel from '@/components/chat/ChatContactPanel.vue';
@@ -100,7 +101,14 @@ function stopResize() {
   document.body.style.userSelect = '';
 }
 
-onMounted(() => { fetchConversations(); initSocket(); });
+const route = useRoute();
+onMounted(async () => {
+  await fetchConversations();
+  initSocket();
+  // Deep link from Kênh Tư Vấn / Ca khó: /chat?conv=<conversationId>
+  const conv = typeof route.query.conv === 'string' ? route.query.conv : '';
+  if (conv) selectConversation(conv);
+});
 onUnmounted(() => { destroySocket(); });
 
 let searchTimeout: ReturnType<typeof setTimeout>;
