@@ -61,6 +61,17 @@ export async function orderRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'contactId và totalAmount là bắt buộc' });
     }
 
+    const contact = await prisma.contact.findFirst({
+      where: { id: String(body.contactId), orgId: user.orgId },
+      select: { id: true },
+    });
+    if (!contact) return reply.status(404).send({ error: 'Contact not found' });
+
+    const amount = parseFloat(body.totalAmount);
+    if (!Number.isFinite(amount) || amount < 0) {
+      return reply.status(400).send({ error: 'totalAmount không hợp lệ' });
+    }
+
     const orderCode = await generateOrderCode(user.orgId);
 
     const order = await prisma.order.create({
@@ -71,7 +82,7 @@ export async function orderRoutes(app: FastifyInstance) {
         createdByUserId: user.id,
         conversationId: body.conversationId || null,
         orderCode,
-        totalAmount: parseFloat(body.totalAmount),
+        totalAmount: amount,
         status: body.status || 'new',
         notes: body.notes || null,
       },
@@ -86,11 +97,27 @@ export async function orderRoutes(app: FastifyInstance) {
 
   // Update order (totalAmount, status, notes)
   app.put('/api/v1/orders/:id', async (request: FastifyRequest, reply: FastifyReply) => {
+    const user = request.user!;
     const { id } = request.params as { id: string };
     const body = request.body as any;
 
+    const existing = await prisma.order.findFirst({
+      where: { id, orgId: user.orgId },
+      select: { id: true, createdByUserId: true },
+    });
+    if (!existing) return reply.status(404).send({ error: 'Order not found' });
+    if (user.role === 'member' && existing.createdByUserId !== user.id) {
+      return reply.status(403).send({ error: 'Chỉ được sửa đơn hàng do mình tạo' });
+    }
+
     const updateData: any = {};
-    if (body.totalAmount !== undefined) updateData.totalAmount = parseFloat(body.totalAmount);
+    if (body.totalAmount !== undefined) {
+      const amount = parseFloat(body.totalAmount);
+      if (!Number.isFinite(amount) || amount < 0) {
+        return reply.status(400).send({ error: 'totalAmount không hợp lệ' });
+      }
+      updateData.totalAmount = amount;
+    }
     if (body.status !== undefined) updateData.status = body.status;
     if (body.notes !== undefined) updateData.notes = body.notes;
 
@@ -107,8 +134,19 @@ export async function orderRoutes(app: FastifyInstance) {
   });
 
   // Delete order
-  app.delete('/api/v1/orders/:id', async (request: FastifyRequest) => {
+  app.delete('/api/v1/orders/:id', async (request: FastifyRequest, reply: FastifyReply) => {
+    const user = request.user!;
     const { id } = request.params as { id: string };
+
+    const existing = await prisma.order.findFirst({
+      where: { id, orgId: user.orgId },
+      select: { id: true, createdByUserId: true },
+    });
+    if (!existing) return reply.status(404).send({ error: 'Order not found' });
+    if (user.role === 'member' && existing.createdByUserId !== user.id) {
+      return reply.status(403).send({ error: 'Chỉ được xoá đơn hàng do mình tạo' });
+    }
+
     await prisma.order.delete({ where: { id } });
     return { success: true };
   });

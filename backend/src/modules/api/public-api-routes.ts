@@ -6,25 +6,68 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { prisma } from '../../shared/database/prisma-client.js';
 import { logger } from '../../shared/utils/logger.js';
+import { sha256Hex } from '../../shared/utils/crypto.js';
+import { zaloRateLimiter } from '../zalo/zalo-rate-limiter.js';
 
 // ── API key auth middleware ────────────────────────────────────────────────────
 
+const API_KEY_RE = /^zcrm_[0-9a-f]{48}$/;
+
 async function apiKeyAuth(request: FastifyRequest, reply: FastifyReply) {
-  const apiKey = request.headers['x-api-key'] as string;
-  if (!apiKey) return reply.status(401).send({ error: 'API key required' });
+  const apiKey = request.headers['x-api-key'];
+  if (typeof apiKey !== 'string' || !API_KEY_RE.test(apiKey)) {
+    return reply.status(401).send({ error: 'API key required' });
+  }
 
-  const setting = await prisma.appSetting.findFirst({
-    where: { settingKey: 'public_api_key', valuePlain: apiKey },
+  // Keys are stored hashed; look the hash up.
+  const hashed = await prisma.appSetting.findFirst({
+    where: { settingKey: 'public_api_key_hash', valuePlain: sha256Hex(apiKey) },
+    select: { orgId: true },
   });
-  if (!setting) return reply.status(401).send({ error: 'Invalid API key' });
+  if (hashed) {
+    (request as any).orgId = hashed.orgId;
+    return;
+  }
 
-  (request as any).orgId = setting.orgId;
+  // Legacy plaintext key (pre-hardening): accept once and upgrade to a hash.
+  const legacy = await prisma.appSetting.findFirst({
+    where: { settingKey: 'public_api_key', valuePlain: apiKey },
+    select: { orgId: true },
+  });
+  if (!legacy) return reply.status(401).send({ error: 'Invalid API key' });
+
+  const hint = `${apiKey.slice(0, 9)}…${apiKey.slice(-4)}`;
+  try {
+    await prisma.$transaction([
+      prisma.appSetting.upsert({
+        where: { orgId_settingKey: { orgId: legacy.orgId, settingKey: 'public_api_key_hash' } },
+        create: { orgId: legacy.orgId, settingKey: 'public_api_key_hash', valuePlain: sha256Hex(apiKey) },
+        update: { valuePlain: sha256Hex(apiKey) },
+      }),
+      prisma.appSetting.upsert({
+        where: { orgId_settingKey: { orgId: legacy.orgId, settingKey: 'public_api_key_hint' } },
+        create: { orgId: legacy.orgId, settingKey: 'public_api_key_hint', valuePlain: hint },
+        update: { valuePlain: hint },
+      }),
+      prisma.appSetting.deleteMany({ where: { orgId: legacy.orgId, settingKey: 'public_api_key' } }),
+    ]);
+    logger.info(`[public-api] Upgraded legacy plaintext API key to hash for org ${legacy.orgId}`);
+  } catch (err) {
+    logger.warn('[public-api] Could not upgrade legacy API key:', err);
+  }
+  (request as any).orgId = legacy.orgId;
+}
+
+// Audit every public API call (org, method, path, ip)
+async function auditPublicApi(request: FastifyRequest) {
+  logger.info(`[public-api] org=${(request as any).orgId} ${request.method} ${request.url} ip=${request.ip}`);
 }
 
 // ── Route registration ────────────────────────────────────────────────────────
 
 export async function publicApiRoutes(app: FastifyInstance): Promise<void> {
   app.addHook('preHandler', apiKeyAuth);
+  app.addHook('preHandler', auditPublicApi);
 
   // ── Contacts ─────────────────────────────────────────────────────────────
 
@@ -275,8 +318,17 @@ export async function publicApiRoutes(app: FastifyInstance): Promise<void> {
       const api = zaloPool.getApi(body.zaloAccountId);
       if (!api) return reply.status(422).send({ error: 'Zalo account not active in pool' });
 
+      if (typeof body.content !== 'string' || body.content.length > 4000) {
+        return reply.status(400).send({ error: 'content must be a string of at most 4000 characters' });
+      }
+
+      // Same anti-block limits as the UI
+      const limits = zaloRateLimiter.checkLimits(body.zaloAccountId);
+      if (!limits.allowed) return reply.status(429).send({ error: limits.reason });
+
       const threadType = body.threadType === 'group' ? 1 : 0;
-      await api.sendMessage(body.content, body.threadId, threadType);
+      zaloRateLimiter.recordSend(body.zaloAccountId);
+      await api.sendMessage({ msg: body.content }, String(body.threadId), threadType);
 
       return { success: true };
     } catch (err) {

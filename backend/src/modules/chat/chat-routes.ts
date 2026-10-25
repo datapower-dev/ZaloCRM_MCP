@@ -42,6 +42,9 @@ export async function chatRoutes(app: FastifyInstance) {
       where.zaloAccountId = { in: accessibleAccounts.map((a) => a.zaloAccountId) };
     }
 
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit) || 50));
+
     const [conversations, total] = await Promise.all([
       prisma.conversation.findMany({
         where,
@@ -55,17 +58,17 @@ export async function chatRoutes(app: FastifyInstance) {
           },
         },
         orderBy: { lastMessageAt: 'desc' },
-        skip: (parseInt(page) - 1) * parseInt(limit),
-        take: parseInt(limit),
+        skip: (pageNum - 1) * limitNum,
+        take: limitNum,
       }),
       prisma.conversation.count({ where }),
     ]);
 
-    return { conversations, total, page: parseInt(page), limit: parseInt(limit) };
+    return { conversations, total, page: pageNum, limit: limitNum };
   });
 
   // ── Get single conversation ──────────────────────────────────────────────
-  app.get('/api/v1/conversations/:id', async (request: FastifyRequest, reply: FastifyReply) => {
+  app.get('/api/v1/conversations/:id', { preHandler: requireZaloAccess('read') }, async (request: FastifyRequest, reply: FastifyReply) => {
     const user = request.user!;
     const { id } = request.params as { id: string };
 
@@ -93,17 +96,20 @@ export async function chatRoutes(app: FastifyInstance) {
     });
     if (!conversation) return reply.status(404).send({ error: 'Conversation not found' });
 
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(200, Math.max(1, parseInt(limit) || 50));
+
     const [messages, total] = await Promise.all([
       prisma.message.findMany({
         where: { conversationId: id },
         orderBy: { sentAt: 'desc' },
-        skip: (parseInt(page) - 1) * parseInt(limit),
-        take: parseInt(limit),
+        skip: (pageNum - 1) * limitNum,
+        take: limitNum,
       }),
       prisma.message.count({ where: { conversationId: id } }),
     ]);
 
-    return { messages: messages.reverse(), total, page: parseInt(page), limit: parseInt(limit) };
+    return { messages: messages.reverse(), total, page: pageNum, limit: limitNum };
   });
 
   // ── Send message ─────────────────────────────────────────────────────────
@@ -112,7 +118,8 @@ export async function chatRoutes(app: FastifyInstance) {
     const { id } = request.params as { id: string };
     const { content } = request.body as { content: string };
 
-    if (!content?.trim()) return reply.status(400).send({ error: 'Content required' });
+    if (typeof content !== 'string' || !content.trim()) return reply.status(400).send({ error: 'Content required' });
+    if (content.length > 4000) return reply.status(400).send({ error: 'Nội dung tối đa 4000 ký tự' });
 
     const conversation = await prisma.conversation.findFirst({
       where: { id, orgId: user.orgId },
@@ -157,7 +164,7 @@ export async function chatRoutes(app: FastifyInstance) {
       });
 
       const io = (app as any).io as Server;
-      io?.emit('chat:message', { accountId: conversation.zaloAccountId, message, conversationId: id });
+      io?.to(`org:${user.orgId}`).emit('chat:message', { accountId: conversation.zaloAccountId, message, conversationId: id });
 
       return message;
     } catch (err) {
@@ -167,7 +174,7 @@ export async function chatRoutes(app: FastifyInstance) {
   });
 
   // ── Mark conversation as read ────────────────────────────────────────────
-  app.post('/api/v1/conversations/:id/mark-read', async (request: FastifyRequest, reply: FastifyReply) => {
+  app.post('/api/v1/conversations/:id/mark-read', { preHandler: requireZaloAccess('read') }, async (request: FastifyRequest, reply: FastifyReply) => {
     const user = request.user!;
     const { id } = request.params as { id: string };
 

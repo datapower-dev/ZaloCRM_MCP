@@ -14,7 +14,7 @@ export interface ZaloAccount {
   status: string;
   liveStatus?: string;
   phone: string | null;
-  sessionData: any;
+  hasSession: boolean;
   ownerUserId: string;
   createdAt: string;
 }
@@ -122,7 +122,11 @@ export function useZaloAccounts() {
   }
 
   function setupSocket() {
-    socket = io({ transports: ['websocket', 'polling'] });
+    socket = io({ transports: ['websocket', 'polling'], auth: { token: localStorage.getItem('token') || '' } });
+
+    socket.on('connect_error', (err: Error) => {
+      if (err.message === 'Unauthorized') qrError.value = 'Phiên đăng nhập hết hạn, hãy đăng nhập lại';
+    });
 
     socket.on('zalo:qr', (data: { accountId: string; qrImage: string }) => {
       if (data.accountId === currentLoginAccountId.value) qrImage.value = data.qrImage;

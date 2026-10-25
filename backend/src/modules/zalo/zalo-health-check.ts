@@ -6,6 +6,7 @@
 import cron from 'node-cron';
 import { Prisma } from '@prisma/client';
 import { zaloPool } from './zalo-pool.js';
+import { parseSession } from './zalo-session.js';
 import { prisma } from '../../shared/database/prisma-client.js';
 import { logger } from '../../shared/utils/logger.js';
 
@@ -21,8 +22,8 @@ export function startZaloHealthCheck(): void {
       for (const acc of accounts) {
         const status = zaloPool.getStatus(acc.id);
         if (status !== 'connected' && status !== 'connecting' && status !== 'qr_pending') {
-          const session = acc.sessionData as any;
-          if (session?.imei) {
+          const session = parseSession(acc.sessionData);
+          if (session) {
             logger.info(`[health-check] Reconnecting ${acc.displayName || acc.id}...`);
             zaloPool.reconnect(acc.id, session).catch((err) => {
               logger.warn(`[health-check] Reconnect failed for ${acc.id}:`, err);
@@ -45,8 +46,8 @@ export function startZaloHealthCheck(): void {
       });
 
       for (const acc of accounts) {
-        const session = acc.sessionData as any;
-        if (session?.imei) {
+        const session = parseSession(acc.sessionData);
+        if (session) {
           // Disconnect then reconnect to force cookie refresh
           zaloPool.disconnect(acc.id);
           await new Promise((r) => setTimeout(r, 5000));

@@ -9,12 +9,16 @@ services:
     container_name: zalo-crm-app-dev
     restart: unless-stopped
     ports:
-      - "3080:3000"
+      # Loopback only — expose through a reverse proxy / tunnel with TLS if needed.
+      # Set BIND_ADDR=0.0.0.0 in .env to listen on all interfaces (trusted LAN only).
+      - "${BIND_ADDR:-127.0.0.1}:${APP_PORT:-3080}:3000"
     env_file:
       - .env
     environment:
       - NODE_ENV=development
       - DATABASE_URL=postgresql://${DB_USER:-crmuser}:${DB_PASSWORD}@db:5432/${DB_NAME:-zalocrm}
+      - HOST=0.0.0.0
+      - TRUST_PROXY=${TRUST_PROXY:-false}
     depends_on:
       db:
         condition: service_healthy

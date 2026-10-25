@@ -5,26 +5,48 @@
       API & Webhook
     </h1>
 
+    <v-alert v-if="!authStore.isAdmin" type="warning" variant="tonal" class="mb-4">
+      Chỉ Owner / Admin mới được cấu hình API key và Webhook.
+    </v-alert>
+
     <!-- API Key section -->
     <v-card class="mb-4">
       <v-card-title class="text-body-1">API Key</v-card-title>
       <v-card-text>
+        <v-alert v-if="freshKey" type="info" variant="tonal" class="mb-3">
+          Key mới chỉ hiển thị <strong>một lần</strong>. Hãy sao chép và lưu ở nơi an toàn.
+        </v-alert>
         <v-text-field
-          v-model="apiKey"
+          :model-value="freshKey || apiKeyHint || '(chưa tạo)'"
           label="API Key"
           readonly
-          append-inner-icon="mdi-content-copy"
+          :append-inner-icon="freshKey ? 'mdi-content-copy' : undefined"
           @click:append-inner="copyKey"
         />
-        <v-btn
-          color="primary"
-          variant="outlined"
-          prepend-icon="mdi-refresh"
-          :loading="generatingKey"
-          @click="generateKey"
-        >
-          Tạo key mới
-        </v-btn>
+        <v-alert v-if="legacyKey" type="warning" variant="tonal" density="compact" class="mb-3">
+          Key hiện tại được tạo bởi phiên bản cũ (lưu dạng rõ). Hãy tạo key mới để lưu dạng băm.
+        </v-alert>
+        <div class="d-flex gap-2">
+          <v-btn
+            color="primary"
+            variant="outlined"
+            prepend-icon="mdi-refresh"
+            :loading="generatingKey"
+            :disabled="!authStore.isAdmin"
+            @click="generateKey"
+          >
+            Tạo key mới
+          </v-btn>
+          <v-btn
+            color="error"
+            variant="text"
+            prepend-icon="mdi-key-remove"
+            :disabled="!authStore.isAdmin || (!apiKeyHint && !freshKey)"
+            @click="revokeKey"
+          >
+            Thu hồi key
+          </v-btn>
+        </div>
       </v-card-text>
     </v-card>
 
@@ -36,17 +58,23 @@
           v-model="webhookUrl"
           label="Webhook URL"
           placeholder="https://your-server.com/webhook"
+          hint="Chỉ chấp nhận http(s) tới máy chủ công khai; địa chỉ nội bộ bị chặn để chống SSRF."
+          persistent-hint
           class="mb-2"
+          :disabled="!authStore.isAdmin"
         />
         <v-text-field
           v-model="webhookSecret"
           label="Secret (HMAC)"
           type="password"
+          hint="Để trống để giữ secret hiện tại."
+          persistent-hint
           class="mb-3"
+          :disabled="!authStore.isAdmin"
         />
         <div class="d-flex gap-2">
-          <v-btn color="primary" :loading="saving" @click="saveWebhook">Lưu</v-btn>
-          <v-btn variant="outlined" :loading="testing" @click="testWebhook">Test Webhook</v-btn>
+          <v-btn color="primary" :loading="saving" :disabled="!authStore.isAdmin" @click="saveWebhook">Lưu</v-btn>
+          <v-btn variant="outlined" :loading="testing" :disabled="!authStore.isAdmin" @click="testWebhook">Test Webhook</v-btn>
         </div>
       </v-card-text>
     </v-card>
@@ -73,7 +101,7 @@ Webhook events:
       </v-card-text>
     </v-card>
 
-    <v-snackbar v-model="snack.show" :color="snack.color" :timeout="3000">
+    <v-snackbar v-model="snack.show" :color="snack.color" :timeout="4000">
       {{ snack.text }}
     </v-snackbar>
   </div>
@@ -82,11 +110,17 @@ Webhook events:
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
 import { api } from '@/api';
+import { useAuthStore } from '@/stores/auth';
 
-const apiKey = ref('');
+const authStore = useAuthStore();
+
+const apiKeyHint = ref('');
+const freshKey = ref('');
+const legacyKey = ref(false);
 const generatingKey = ref(false);
 const webhookUrl = ref('');
 const webhookSecret = ref('');
+const savedSecretMask = ref('');
 const saving = ref(false);
 const testing = ref(false);
 
@@ -96,55 +130,78 @@ function showSnack(text: string, color = 'success') {
   snack.value = { show: true, text, color };
 }
 
+function errorText(err: any, fallback: string) {
+  return err?.response?.data?.error || fallback;
+}
+
 async function loadApiKey() {
   try {
     const res = await api.get('/settings/api-key');
-    apiKey.value = res.data.apiKey ?? '';
+    apiKeyHint.value = res.data.key ?? '';
+    legacyKey.value = !!res.data.legacy;
   } catch {
-    apiKey.value = '';
+    apiKeyHint.value = '';
   }
 }
 
 async function loadWebhook() {
   try {
     const res = await api.get('/settings/webhook');
-    webhookUrl.value = res.data.webhookUrl ?? '';
-    webhookSecret.value = res.data.webhookSecret ?? '';
+    webhookUrl.value = res.data.url ?? '';
+    savedSecretMask.value = res.data.secret ?? '';
+    webhookSecret.value = '';
   } catch {
     webhookUrl.value = '';
-    webhookSecret.value = '';
+    savedSecretMask.value = '';
   }
 }
 
 async function generateKey() {
+  if (!confirm('Tạo key mới sẽ vô hiệu hoá key cũ ngay lập tức. Tiếp tục?')) return;
   generatingKey.value = true;
   try {
     const res = await api.post('/settings/api-key/generate');
-    apiKey.value = res.data.apiKey ?? '';
-    showSnack('API key mới đã được tạo');
-  } catch {
-    showSnack('Tạo key thất bại', 'error');
+    freshKey.value = res.data.key ?? '';
+    legacyKey.value = false;
+    await loadApiKey();
+    showSnack('API key mới đã được tạo — hãy sao chép ngay');
+  } catch (err) {
+    showSnack(errorText(err, 'Tạo key thất bại'), 'error');
   } finally {
     generatingKey.value = false;
   }
 }
 
+async function revokeKey() {
+  if (!confirm('Thu hồi API key? Mọi tích hợp đang dùng key này sẽ ngừng hoạt động.')) return;
+  try {
+    await api.delete('/settings/api-key');
+    freshKey.value = '';
+    apiKeyHint.value = '';
+    legacyKey.value = false;
+    showSnack('Đã thu hồi API key');
+  } catch (err) {
+    showSnack(errorText(err, 'Thu hồi thất bại'), 'error');
+  }
+}
+
 async function copyKey() {
-  if (!apiKey.value) return;
-  await navigator.clipboard.writeText(apiKey.value);
+  if (!freshKey.value) return;
+  await navigator.clipboard.writeText(freshKey.value);
   showSnack('Đã sao chép API key');
 }
 
 async function saveWebhook() {
   saving.value = true;
   try {
-    await api.put('/settings/webhook', {
-      webhookUrl: webhookUrl.value,
-      webhookSecret: webhookSecret.value,
-    });
+    const payload: { url: string; secret?: string } = { url: webhookUrl.value.trim() };
+    // Empty field = keep existing secret
+    if (webhookSecret.value) payload.secret = webhookSecret.value;
+    await api.put('/settings/webhook', payload);
+    await loadWebhook();
     showSnack('Đã lưu cấu hình webhook');
-  } catch {
-    showSnack('Lưu thất bại', 'error');
+  } catch (err) {
+    showSnack(errorText(err, 'Lưu thất bại'), 'error');
   } finally {
     saving.value = false;
   }
@@ -154,9 +211,9 @@ async function testWebhook() {
   testing.value = true;
   try {
     await api.post('/settings/webhook/test');
-    showSnack('Gửi test webhook thành công');
-  } catch {
-    showSnack('Test webhook thất bại', 'error');
+    showSnack('Đã gửi sự kiện test tới webhook');
+  } catch (err) {
+    showSnack(errorText(err, 'Test webhook thất bại'), 'error');
   } finally {
     testing.value = false;
   }

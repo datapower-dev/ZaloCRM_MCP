@@ -23,7 +23,7 @@
           <v-btn v-if="item.liveStatus !== 'connected'" icon size="small" color="primary" @click="loginAccount(item.id)" title="Đăng nhập QR">
             <v-icon>mdi-qrcode</v-icon>
           </v-btn>
-          <v-btn v-if="item.liveStatus === 'disconnected' && item.sessionData" icon size="small" color="info" @click="reconnectAccount(item.id)" title="Kết nối lại">
+          <v-btn v-if="item.liveStatus === 'disconnected' && item.hasSession" icon size="small" color="info" @click="reconnectAccount(item.id)" title="Kết nối lại">
             <v-icon>mdi-refresh</v-icon>
           </v-btn>
           <v-btn icon size="small" color="error" @click="confirmDelete(item)" title="Xóa">

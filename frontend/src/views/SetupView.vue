@@ -9,7 +9,7 @@
       <v-text-field v-model="orgName" label="Tên tổ chức / phòng khám" prepend-inner-icon="mdi-domain" :rules="[v => !!v || 'Bắt buộc']" class="mb-2" />
       <v-text-field v-model="fullName" label="Họ tên quản trị viên" prepend-inner-icon="mdi-account" :rules="[v => !!v || 'Bắt buộc']" class="mb-2" />
       <v-text-field v-model="email" label="Email đăng nhập" type="email" prepend-inner-icon="mdi-email" :rules="[v => !!v || 'Bắt buộc']" class="mb-2" />
-      <v-text-field v-model="password" label="Mật khẩu" type="password" prepend-inner-icon="mdi-lock" :rules="[v => v.length >= 6 || 'Tối thiểu 6 ký tự']" class="mb-4" />
+      <v-text-field v-model="password" label="Mật khẩu" type="password" prepend-inner-icon="mdi-lock" :rules="[v => v.length >= 8 || 'Tối thiểu 8 ký tự', v => (/[A-Za-z]/.test(v) && /\d/.test(v)) || 'Cần cả chữ và số']" class="mb-4" />
       <v-btn type="submit" color="primary" block size="large" :loading="loading">Tạo tài khoản</v-btn>
     </v-form>
     <v-alert v-if="error" type="error" class="mt-4" density="compact" closable>{{ error }}</v-alert>

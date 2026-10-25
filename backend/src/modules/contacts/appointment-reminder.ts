@@ -32,7 +32,7 @@ export function startAppointmentReminder(io: Server): void {
       });
 
       for (const apt of appointments) {
-        io.emit('appointment:reminder', {
+        io.to(`org:${apt.orgId}`).emit('appointment:reminder', {
           appointmentId: apt.id,
           contactName: apt.contact.fullName,
           contactPhone: apt.contact.phone,

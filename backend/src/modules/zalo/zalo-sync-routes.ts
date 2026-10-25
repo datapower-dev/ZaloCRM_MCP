@@ -19,6 +19,9 @@ export async function zaloSyncRoutes(app: FastifyInstance) {
       const user = request.user!;
       const { id } = request.params as { id: string };
 
+      const account = await prisma.zaloAccount.findFirst({ where: { id, orgId: user.orgId }, select: { id: true } });
+      if (!account) return reply.status(404).send({ error: 'Zalo account not found' });
+
       const instance = zaloPool.getInstance(id);
       if (!instance?.api) return reply.status(400).send({ error: 'Zalo account not connected' });
 
@@ -69,7 +72,7 @@ export async function zaloSyncRoutes(app: FastifyInstance) {
         return { success: true, created, updated, total: friends.length };
       } catch (err) {
         logger.error('[sync] Zalo contacts error:', err);
-        return reply.status(500).send({ error: 'Sync failed: ' + String(err) });
+        return reply.status(500).send({ error: 'Sync failed' });
       }
     }
   );

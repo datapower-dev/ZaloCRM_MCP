@@ -55,7 +55,7 @@
             <v-card-text>
               <v-text-field v-model="form.fullName" label="Họ tên *" class="mb-2" />
               <v-text-field v-model="form.email" label="Email *" type="email" class="mb-2" />
-              <v-text-field v-model="form.password" label="Mật khẩu *" type="password" class="mb-2" />
+              <v-text-field v-model="form.password" label="Mật khẩu *" type="password" hint="Tối thiểu 8 ký tự, gồm chữ và số" persistent-hint class="mb-2" />
               <v-select v-model="form.role" :items="roleOptions" item-title="label" item-value="value" label="Vai trò" />
               <v-alert v-if="dialogError" type="error" density="compact" class="mt-2">{{ dialogError }}</v-alert>
             </v-card-text>
@@ -90,7 +90,7 @@
           <v-card>
             <v-card-title>Đặt lại mật khẩu</v-card-title>
             <v-card-text>
-              <v-text-field v-model="newPassword" label="Mật khẩu mới *" type="password" />
+              <v-text-field v-model="newPassword" label="Mật khẩu mới *" type="password" hint="Tối thiểu 8 ký tự, gồm chữ và số" persistent-hint />
               <v-alert v-if="dialogError" type="error" density="compact" class="mt-2">{{ dialogError }}</v-alert>
             </v-card-text>
             <v-card-actions>

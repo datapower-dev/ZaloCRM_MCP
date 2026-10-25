@@ -9,6 +9,7 @@ import { authMiddleware } from './auth-middleware.js';
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'node:crypto';
 import { logger } from '../../shared/utils/logger.js';
+import { validatePassword } from './password-policy.js';
 
 export async function userRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authMiddleware);
@@ -44,6 +45,11 @@ export async function userRoutes(app: FastifyInstance) {
     if (!email || !fullName || !password) {
       return reply.status(400).send({ error: 'Email, họ tên, mật khẩu là bắt buộc' });
     }
+    const pwError = validatePassword(password);
+    if (pwError) return reply.status(400).send({ error: pwError });
+    if (!['member', 'admin'].includes(role)) {
+      return reply.status(400).send({ error: 'Role không hợp lệ' });
+    }
 
     const existing = await prisma.user.findUnique({ where: { email } });
     if (existing) return reply.status(400).send({ error: 'Email đã tồn tại' });
@@ -53,7 +59,7 @@ export async function userRoutes(app: FastifyInstance) {
       return reply.status(403).send({ error: 'Chỉ owner có thể tạo admin' });
     }
 
-    const passwordHash = await bcrypt.hash(password, 10);
+    const passwordHash = await bcrypt.hash(password, 12);
     const user = await prisma.user.create({
       data: {
         id: randomUUID(),
@@ -93,6 +99,23 @@ export async function userRoutes(app: FastifyInstance) {
       return reply.status(400).send({ error: 'Không thể thay đổi role của chính mình' });
     }
 
+    // Only the owner may touch the owner account or promote anyone to owner
+    const target = await prisma.user.findFirst({ where: { id, orgId: currentUser.orgId }, select: { role: true } });
+    if (!target) return reply.status(404).send({ error: 'User not found' });
+    if (target.role === 'owner' && currentUser.role !== 'owner') {
+      return reply.status(403).send({ error: 'Không thể sửa tài khoản owner' });
+    }
+    if (role !== undefined && !['member', 'admin', 'owner'].includes(role)) {
+      return reply.status(400).send({ error: 'Role không hợp lệ' });
+    }
+    if (role === 'owner' && target.role !== 'owner') {
+      return reply.status(400).send({ error: 'Không thể tạo thêm owner' });
+    }
+    // Members may only change their own name
+    if (currentUser.role === 'member' && (email !== undefined || teamId !== undefined)) {
+      return reply.status(403).send({ error: 'Không có quyền' });
+    }
+
     const updateData: any = {};
     if (fullName !== undefined) updateData.fullName = fullName;
     if (email !== undefined) updateData.email = email;
@@ -125,11 +148,17 @@ export async function userRoutes(app: FastifyInstance) {
 
     const { id } = request.params as { id: string };
     const { password } = request.body as { password: string };
-    if (!password || password.length < 6) {
-      return reply.status(400).send({ error: 'Mật khẩu tối thiểu 6 ký tự' });
+    const pwError = validatePassword(password);
+    if (pwError) return reply.status(400).send({ error: pwError });
+
+    // Admins cannot reset the owner's password
+    const target = await prisma.user.findFirst({ where: { id, orgId: currentUser.orgId }, select: { role: true } });
+    if (!target) return reply.status(404).send({ error: 'User not found' });
+    if (target.role === 'owner' && currentUser.role !== 'owner') {
+      return reply.status(403).send({ error: 'Không thể đặt lại mật khẩu owner' });
     }
 
-    const passwordHash = await bcrypt.hash(password, 10);
+    const passwordHash = await bcrypt.hash(password, 12);
     await prisma.user.update({
       where: { id, orgId: currentUser.orgId },
       data: { passwordHash },

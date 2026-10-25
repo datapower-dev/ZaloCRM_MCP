@@ -1,7 +1,7 @@
 /**
  * zalo-listener-factory.ts — sets up zca-js listener events for one Zalo account.
  * Handles message routing, user-info caching, group detection, and undo events.
- * Extracted from ZaloAccountPool to keep zalo-pool.ts under 200 lines.
+ * Socket.IO events are emitted to the owning org's room only.
  */
 import type { Server } from 'socket.io';
 import { logger } from '../../shared/utils/logger.js';
@@ -68,6 +68,7 @@ async function resolveGroupName(api: any, groupId: string): Promise<string> {
 
 export interface ListenerContext {
   accountId: string;
+  orgId: string;
   api: any;
   io: Server | null;
   userInfoCache: Map<string, UserInfoCacheEntry>;
@@ -79,8 +80,9 @@ export interface ListenerContext {
  * Calls listener.start() with retryOnClose at the end.
  */
 export function attachZaloListener(ctx: ListenerContext): void {
-  const { accountId, api, io, userInfoCache, onDisconnected } = ctx;
+  const { accountId, orgId, api, io, userInfoCache, onDisconnected } = ctx;
   const listener = api.listener;
+  const room = `org:${orgId}`;
 
   listener.on('connected', () => {
     logger.info(`[zalo:${accountId}] Listener connected`);
@@ -127,7 +129,7 @@ export function attachZaloListener(ctx: ListenerContext): void {
       });
 
       if (result) {
-        io?.emit('chat:message', {
+        io?.to(`org:${result.orgId}`).emit('chat:message', {
           accountId,
           message: result.message,
           conversationId: result.conversationId,
@@ -142,14 +144,14 @@ export function attachZaloListener(ctx: ListenerContext): void {
     const msgId = data.data?.msgId || data.msgId;
     if (msgId) {
       await handleMessageUndo(accountId, String(msgId));
-      io?.emit('chat:deleted', { accountId, msgId: String(msgId) });
+      io?.to(room).emit('chat:deleted', { accountId, msgId: String(msgId) });
     }
   });
 
   listener.on('closed', (code: number, reason: string) => {
     logger.warn(`[zalo:${accountId}] Listener closed: ${code} ${reason}`);
     onDisconnected(accountId);
-    io?.emit('zalo:disconnected', { accountId, code, reason });
+    io?.to(room).emit('zalo:disconnected', { accountId, code, reason });
   });
 
   listener.on('error', (err: any) => {

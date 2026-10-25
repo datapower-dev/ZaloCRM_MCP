@@ -14,7 +14,7 @@ export async function searchRoutes(app: FastifyInstance) {
     const { q = '' } = request.query as { q: string };
     if (!q || q.length < 2) return { contacts: [], messages: [], appointments: [] };
 
-    const searchTerm = q.trim();
+    const searchTerm = String(q).trim().slice(0, 100);
 
     const [contacts, messages, appointments] = await Promise.all([
       prisma.contact.findMany({
@@ -26,7 +26,7 @@ export async function searchRoutes(app: FastifyInstance) {
             { notes: { contains: searchTerm, mode: 'insensitive' } },
           ],
         },
-        select: { id: true, fullName: true, phone: true, diseaseCode: true, diseaseName: true },
+        select: { id: true, fullName: true, phone: true },
         take: 10,
       }),
       prisma.message.findMany({

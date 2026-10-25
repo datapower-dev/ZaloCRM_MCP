@@ -66,7 +66,7 @@ const routes = [
     path: '/api-settings',
     name: 'ApiSettings',
     component: () => import('@/views/ApiSettingsView.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, requiresAdmin: true },
   },
   {
     path: '/:pathMatch(.*)*',
@@ -100,6 +100,9 @@ router.beforeEach(async (to, _from, next) => {
       if (!authStore.isAuthenticated) {
         return next('/login');
       }
+    }
+    if (to.meta.requiresAdmin && !authStore.isAdmin) {
+      return next('/');
     }
   }
 

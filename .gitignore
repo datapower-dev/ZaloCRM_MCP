@@ -4,3 +4,5 @@ dist/
 *.log
 backups/
 .DS_Store
+.claude/
+LOCAL-TEST-ACCOUNT.md

@@ -28,6 +28,11 @@ Hệ thống quản lý tập trung nhiều tài khoản Zalo cá nhân trên 1 
 | Hệ điều hành | Ubuntu 20.04+ | Ubuntu 22.04 LTS |
 | Phần mềm | Docker + Docker Compose | Docker 24+ |
 
+## Bảo mật
+
+Bản này đã được rà soát và nâng cấp bảo mật — xem [SECURITY-HARDENING.md](SECURITY-HARDENING.md)
+(xác thực Socket.IO, mã hoá phiên Zalo, bắt buộc secret, chống SSRF, phân quyền webhook/API key...).
+
 ## Cài đặt nhanh
 
 > Hướng dẫn chi tiết: [HUONG-DAN-CAI-DAT.md](HUONG-DAN-CAI-DAT.md)
@@ -36,11 +41,11 @@ Hệ thống quản lý tập trung nhiều tài khoản Zalo cá nhân trên 1 
 git clone https://github.com/vuongnguyenbinh/ZaloCRM.git
 cd ZaloCRM
 cp .env.example .env
-# Sửa file .env — đặt mật khẩu và secret keys
+# Sửa file .env — đặt DB_PASSWORD, JWT_SECRET, ENCRYPTION_KEY (>= 32 ký tự, server từ chối chạy nếu thiếu)
 docker compose up -d --build
 ```
 
-Truy cập **http://IP-server:3080** → Tạo tài khoản admin lần đầu.
+Truy cập **http://localhost:3080** (mặc định chỉ mở trên máy local; xem SECURITY-HARDENING.md để mở ra LAN/Internet) → Tạo tài khoản admin lần đầu.
 
 ## Công nghệ sử dụng
 
